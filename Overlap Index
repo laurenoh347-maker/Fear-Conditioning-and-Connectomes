@@ -1,0 +1,107 @@
+import re
+import zipfile
+import pandas as pd
+from pathlib import Path
+
+
+# -------------------------------------------------
+# Extract Animal ID from fMRI filenames
+# Example:
+#   A22030711_connectome.csv -> 220307_11
+# -------------------------------------------------
+def extract_animal_id_from_filename(filename):
+    match = re.search(r"A(\d{8})", filename)
+    if match is None:
+        return None
+
+    digits = match.group(1)
+    return f"{digits[:6]}_{digits[6:]}"
+
+
+# -------------------------------------------------
+# Index all fMRI files (connectome + ts)
+# -------------------------------------------------
+def index_fmri_files(zip_files):
+    records = []
+
+    for zip_path in zip_files:
+        with zipfile.ZipFile(zip_path, "r") as z:
+            for member in z.namelist():
+                fname = Path(member).name
+                animal_id = extract_animal_id_from_filename(fname)
+
+                if animal_id is None:
+                    continue
+
+                records.append({
+                    "Animal ID": animal_id,
+                    "Zip File": Path(zip_path).name,
+                    "Filename": fname
+                })
+
+    return pd.DataFrame(records)
+
+
+# -------------------------------------------------
+# Main
+# -------------------------------------------------
+def main():
+
+    # ---- INPUT FILES ----
+    fc_metadata_csv = "FC_Day1_combined_metadata.csv"
+
+    fmri_zip_files = [
+        "Batch_0_FC.zip",
+        "Batch_1_FC.zip",
+        "Batch_2_FC.zip",
+        "Batch_3_FC.zip",
+    ]
+
+    output_xlsx = "FC_fMRI_overlap_index.xlsx"
+
+    # ---- Load FC metadata ----
+    fc_df = pd.read_csv(fc_metadata_csv, dtype=str)
+    fc_df["Animal ID"] = fc_df["Animal ID"].astype(str)
+
+    # ---- Index fMRI files ----
+    fmri_index_df = index_fmri_files(fmri_zip_files)
+
+    # ---- Find overlapping animals ----
+    overlapping_ids = sorted(
+        set(fc_df["Animal ID"]) &
+        set(fmri_index_df["Animal ID"])
+    )
+
+    overlap_fc_df = (
+        fc_df[fc_df["Animal ID"].isin(overlapping_ids)]
+        .drop_duplicates(subset="Animal ID")
+        .sort_values("Animal ID")
+    )
+
+    overlap_fmri_index_df = (
+        fmri_index_df[fmri_index_df["Animal ID"].isin(overlapping_ids)]
+        .sort_values(["Animal ID", "Zip File", "Filename"])
+    )
+
+    # ---- Write Excel workbook ----
+    with pd.ExcelWriter(output_xlsx, engine="xlsxwriter") as writer:
+        overlap_fc_df.to_excel(
+            writer,
+            sheet_name="Overlap_FC_Metadata",
+            index=False
+        )
+
+        overlap_fmri_index_df.to_excel(
+            writer,
+            sheet_name="fMRI_File_Index",
+            index=False
+        )
+
+    print(
+        f"Created {output_xlsx} with "
+        f"{len(overlap_fc_df)} overlapping animals"
+    )
+
+
+if __name__ == "__main__":
+    main()
