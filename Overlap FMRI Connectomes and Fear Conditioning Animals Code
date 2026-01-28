@@ -1,0 +1,63 @@
+import re
+import zipfile
+import pandas as pd
+from pathlib import Path
+
+
+def extract_animal_id_from_filename(filename):
+    match = re.search(r"A(\d{8})", filename)
+    if match is None:
+        return None
+
+    digits = match.group(1)
+    return f"{digits[:6]}_{digits[6:]}"
+
+
+def collect_fmri_animal_ids(zip_files):
+    animal_ids = set()
+
+    for zip_path in zip_files:
+        with zipfile.ZipFile(zip_path, "r") as z:
+            for member in z.namelist():
+                fname = Path(member).name
+                animal_id = extract_animal_id_from_filename(fname)
+                if animal_id:
+                    animal_ids.add(animal_id)
+
+    return animal_ids
+
+
+def main():
+
+    fc_metadata_csv = "FC_Day1_combined_metadata.csv"
+
+    fmri_zip_files = [
+        "Batch_0_FC.zip",
+        "Batch_1_FC.zip",
+        "Batch_2_FC.zip",
+        "Batch_3_FC.zip",
+    ]
+
+    output_csv = "FC_Day1_overlap_with_fMRI.csv"
+
+    fc_df = pd.read_csv(fc_metadata_csv, dtype=str)
+    fc_df["Animal ID"] = fc_df["Animal ID"].astype(str)
+
+    fmri_animal_ids = collect_fmri_animal_ids(fmri_zip_files)
+
+    overlap_df = fc_df[
+        fc_df["Animal ID"].isin(fmri_animal_ids)
+    ].copy()
+
+    overlap_df = overlap_df.drop_duplicates(subset="Animal ID")
+    overlap_df = overlap_df.sort_values("Animal ID")
+
+    overlap_df.to_csv(output_csv, index=False)
+
+    print(
+        f"Created {output_csv} with {len(overlap_df)} overlapping animals"
+    )
+
+
+if __name__ == "__main__":
+    main()
