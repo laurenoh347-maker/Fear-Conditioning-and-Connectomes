@@ -13,7 +13,9 @@ print("Day0 columns:", day0.columns.tolist())
 print("Day1 columns:", day1.columns.tolist())
 print("Day2 columns:", day2.columns.tolist())
 
-# Use Animal ID directly
+# ==============================
+# DAY 0 — Acquisition (unchanged)
+# ==============================
 day0_df = (
     day0
     .groupby("Animal ID")
@@ -28,17 +30,56 @@ day0_df = (
     .reset_index()
 )
 
+# ==============================
+# DAY 1 — Context Memory (unchanged)
+# ==============================
 day1_df = (
     day1.groupby("Animal ID", as_index=False)
-         .agg(Day1_Freezing=("Pct Total Time Freezing", "mean"))
+         .agg(Day1_Context=("Pct Total Time Freezing", "mean"))
+)
+
+# ==============================
+# DAY 2 — Cued Memory (UPDATED)
+# ==============================
+
+# Identify baseline vs tone rows
+# (Adjust these strings if needed after printing unique values)
+print("Unique Day2 Component Names:")
+print(day2["Component Name"].unique())
+
+# Baseline rows (acclimation)
+baseline = day2[
+    day2["Component Name"].str.contains("acclim|baseline", case=False, na=False)
+]
+
+# Tone rows (CS)
+tone = day2[
+    day2["Component Name"].str.contains("tone|cs", case=False, na=False)
+]
+
+baseline_df = (
+    baseline.groupby("Animal ID", as_index=False)
+            .agg(Day2_Baseline=("Pct Total Time Freezing", "mean"))
+)
+
+tone_df = (
+    tone.groupby("Animal ID", as_index=False)
+        .agg(Day2_Tone=("Pct Total Time Freezing", "mean"))
 )
 
 day2_df = (
-    day2.groupby("Animal ID", as_index=False)
-         .agg(Day2_Freezing=("Pct Total Time Freezing", "mean"))
+    tone_df
+    .merge(baseline_df, on="Animal ID", how="inner")
 )
 
-# Merge
+day2_df["Day2_Cued"] = day2_df["Day2_Tone"] - day2_df["Day2_Baseline"]
+
+day2_df = day2_df[["Animal ID", "Day2_Cued"]]
+
+# ==============================
+# Merge All
+# ==============================
+
 behavior = (
     day0_df
     .merge(day1_df, on="Animal ID")
@@ -51,3 +92,4 @@ behavior.to_csv(out, index=False)
 
 print("Saved:", out)
 print("Rows:", behavior.shape[0])
+print("Columns:", behavior.columns.tolist())
